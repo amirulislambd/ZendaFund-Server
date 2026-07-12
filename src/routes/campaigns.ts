@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ObjectId } from "mongodb";
+import { ObjectId, Sort } from "mongodb";
 import { getCollections } from "../lib/mongodb";
 import { verifyToken, verifyCreator } from "../middleware/auth";
 
@@ -7,14 +7,58 @@ const router = Router();
 
 router.get("/campaigns", async (req, res) => {
   try {
+    const {
+      q,
+      category,
+      page = "1",
+      limit = "12",
+      sort = "newest",
+    } = req.query;
+    const pageNumber = Math.max(Number(page), 1);
+    const pageSize = Math.max(Number(limit), 1);
+
+    const filter: Record<string, any> = { status: "approved" };
+
+    if (typeof category === "string" && category.trim()) {
+      filter.category = category.trim();
+    }
+
+    if (typeof q === "string" && q.trim()) {
+      const search = q.trim();
+      filter.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { rewardInfo: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const sortOptions: Record<string, 1 | -1> = { createdAt: -1 };
+    if (sort === "deadline") {
+      sortOptions.deadline = 1;
+    } else if (sort === "raised") {
+      sortOptions.raisedAmount = -1;
+    } else if (sort === "oldest") {
+      sortOptions.createdAt = 1;
+    }
+
     const collections = await getCollections();
+    const total = await collections.campaigns.countDocuments(filter);
     const campaigns = await collections.campaigns
-      .find({ status: "approved" })
-      .sort({ createdAt: -1 })
-      .limit(100)
+      .find(filter)
+      .sort(sortOptions)
+      .skip((pageNumber - 1) * pageSize)
+      .limit(pageSize)
       .toArray();
 
-    res.json({ campaigns });
+    res.json({
+      campaigns,
+      pagination: {
+        page: pageNumber,
+        limit: pageSize,
+        total,
+        pages: Math.ceil(total / pageSize),
+      },
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Unable to load campaigns" });
