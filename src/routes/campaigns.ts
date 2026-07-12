@@ -1,8 +1,44 @@
 import { Router } from "express";
+import { ObjectId } from "mongodb";
 import { getCollections } from "../lib/mongodb";
 import { verifyToken, verifyCreator } from "../middleware/auth";
 
 const router = Router();
+
+router.get("/campaigns", async (req, res) => {
+  try {
+    const collections = await getCollections();
+    const campaigns = await collections.campaigns
+      .find({ status: "approved" })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .toArray();
+
+    res.json({ campaigns });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Unable to load campaigns" });
+  }
+});
+
+router.get("/campaigns/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const collections = await getCollections();
+    const campaign = await collections.campaigns.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: "Campaign not found" });
+    }
+
+    res.json({ campaign });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ error: "Invalid campaign id" });
+  }
+});
 
 router.post("/new/campaign", verifyToken, verifyCreator, async (req, res) => {
   try {

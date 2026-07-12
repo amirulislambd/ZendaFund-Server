@@ -12,8 +12,10 @@ app.use(cors());
 app.use(express.json());
 
 import campaignRoutes from "./src/routes/campaigns";
+import authRoutes from "./src/routes/auth";
 
 app.use("/api", campaignRoutes);
+app.use("/api", authRoutes);
 
 app.get("/", (req, res) => {
   res.send("ZendaFund API is running, MongoDB connected ✅");
