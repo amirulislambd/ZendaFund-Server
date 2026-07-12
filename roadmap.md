@@ -10,6 +10,18 @@ Build an Express + TypeScript + MongoDB backend for ZendaFund that supports:
 
 ---
 
+## Current Progress
+- Initialized Express + TypeScript backend
+- Added centralized MongoDB helper in `src/lib/mongodb.ts`
+- Added auth middleware in `src/middleware/auth.ts`
+  - token verification against `session` collection
+  - user lookup from `user` collection
+  - role normalization for `creator`, `supporter`, `admin`
+- Added campaign creation API in `src/routes/campaigns.ts`
+- Added `.gitignore` and pushed repository to GitHub
+
+---
+
 ## Folder Structure
 This is the structure we should use for backend code organization:
 
