@@ -6,11 +6,11 @@
     // "outDir": "./dist",
 
     // Environment Settings
-    "module": "commonjs",
+    "module": "Node16",
     "target": "es2022",
     "lib": ["esnext"],
     "types": ["node"],
-    "moduleResolution": "node",
+    "moduleResolution": "Node16",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
 

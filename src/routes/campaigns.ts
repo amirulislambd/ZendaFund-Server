@@ -65,7 +65,7 @@ router.get("/campaigns", async (req, res) => {
   }
 });
 
-router.get("/campaigns/:id", async (req, res) => {
+router.get("/campaign/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const collections = await getCollections();
@@ -95,6 +95,9 @@ router.post("/new/campaign", verifyToken, verifyCreator, async (req, res) => {
       campaign_story,
       reward_info,
       campaign_image_url,
+      creatorEmail,
+      creatorName,
+      creatorImage,
     } = req.body;
 
     if (
@@ -107,13 +110,15 @@ router.post("/new/campaign", verifyToken, verifyCreator, async (req, res) => {
       !reward_info ||
       !campaign_image_url
     ) {
-      return res.status(400).json({ error: "All fields are required" });
+      return res.status(400).json({ message: "All fields are required" });
     }
 
     const goal = Number(funding_goal);
     const minimumContribution = Number(minimum_contribution);
     if (Number.isNaN(goal) || Number.isNaN(minimumContribution)) {
-      return res.status(400).json({ error: "Funding goal and minimum contribution must be numbers" });
+      return res.status(400).json({
+        message: "Funding goal and minimum contribution must be numbers",
+      });
     }
 
     const createdAt = new Date();
@@ -128,18 +133,24 @@ router.post("/new/campaign", verifyToken, verifyCreator, async (req, res) => {
       imageUrl: campaign_image_url,
       status: "pending",
       raisedAmount: 0,
+      creatorEmail: creatorEmail ?? null,
+      creatorName: creatorName ?? null,
+      creatorImage: creatorImage ?? null,
       createdAt,
       updatedAt: createdAt,
     };
-
+    console.log("campaign", campaign);
     const collections = await getCollections();
     const result = await collections.campaigns.insertOne(campaign);
 
-    res.status(201).json({ success: true, campaignId: result.insertedId, campaign });
+    res
+      .status(201)
+      .json({ success: true, campaignId: result.insertedId, campaign });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Failed to create campaign" });
+    res.status(500).json({ message: "Failed to create campaign" });
   }
 });
+
 
 export default router;
