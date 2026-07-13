@@ -97,6 +97,11 @@ export const sendContributionConfirmationEmail = async (data: {
   amount: number;
   creatorName?: string;
   date: Date;
+
+  paymentMethod?: "card" | "credits";
+  remainingCredits?: number;
+
+  stripeSessionId?: string;
 }) => {
   try {
     const formattedDate = data.date.toLocaleDateString("en-US", {
@@ -105,53 +110,218 @@ export const sendContributionConfirmationEmail = async (data: {
       day: "numeric",
     });
 
+    const paymentMethodText =
+      data.paymentMethod === "credits" ? "Wallet Credits" : "Card (Stripe)";
+
     await transporter.sendMail({
       from: `"ZendaFund" <${process.env.EMAIL_USER}>`,
       to: data.toEmail,
-      subject: `You supported "${data.campaignTitle}" — thank you!`,
-      text: `Contribution Confirmed\n\nHi ${data.supporterName},\n\nThank you for supporting ${data.campaignTitle}${
-        data.creatorName ? ` by ${data.creatorName}` : ""
-      }! Your generosity makes a real difference.\n\nCampaign: ${data.campaignTitle}\nAmount Contributed: ${data.amount.toLocaleString()} credits\nDate: ${formattedDate}\n\nView the campaign: ${process.env.NEXT_PUBLIC_BASE_URL}/explore/${data.campaignId}\n\nYou can track this and other contributions from your dashboard at any time.\n\nIf you have any questions, reply to this email.`,
+
+      subject: `You supported "${data.campaignTitle}" — Thank You!`,
+
+      text: `
+  Contribution Confirmed
+  
+  Hi ${data.supporterName},
+  
+  Thank you for supporting "${data.campaignTitle}"${
+    data.creatorName ? ` by ${data.creatorName}` : ""
+  }.
+  
+  Campaign:
+  ${data.campaignTitle}
+  
+  Contribution:
+  ${data.amount}
+  
+  Payment Method:
+  ${paymentMethodText}
+  
+  ${
+    data.paymentMethod === "credits"
+      ? `Remaining Credits: ${data.remainingCredits}`
+      : `Transaction ID: ${data.stripeSessionId ?? "N/A"}`
+  }
+  
+  Status:
+  Pending Approval
+  
+  Date:
+  ${formattedDate}
+  
+  View Campaign:
+  ${process.env.NEXT_PUBLIC_BASE_URL}/explore/${data.campaignId}
+  `,
+
       html: `
-        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-          ${emailHeader}
-          <h2 style="color: #10b981;">Contribution Confirmed 🎉</h2>
-          <p>Hi ${data.supporterName},</p>
-          <p>
-            Thank you for supporting <strong>${data.campaignTitle}</strong>${
-              data.creatorName ? ` by ${data.creatorName}` : ""
-            }! Your generosity makes a real difference.
-          </p>
-          <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-            <tr>
-              <td style="padding: 8px 0; color: #64748b;">Campaign</td>
-              <td style="padding: 8px 0; font-weight: bold; text-align: right;">${data.campaignTitle}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #64748b;">Amount Contributed</td>
-              <td style="padding: 8px 0; font-weight: bold; text-align: right;">${data.amount.toLocaleString()} credits</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #64748b;">Date</td>
-              <td style="padding: 8px 0; font-weight: bold; text-align: right;">${formattedDate}</td>
-            </tr>
-          </table>
-          <div style="text-align: center; margin: 24px 0;">
-            <a
-              href="${process.env.NEXT_PUBLIC_BASE_URL}/explore/${data.campaignId}"
-              style="display: inline-block; background: #10b981; color: white; padding: 10px 24px; border-radius: 999px; text-decoration: none; font-weight: 600;"
-            >
-              View Campaign
-            </a>
-          </div>
-          <p style="color: #64748b; font-size: 14px;">
-            You can track this and other contributions from your dashboard at any time.
-          </p>
-          <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">
-            If you have any questions, reply to this email.
-          </p>
+        <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto">
+  
+        ${emailHeader}
+  
+        <h2 style="color:#10b981">
+        Contribution Confirmed 🎉
+        </h2>
+  
+        <p>
+        Hi <strong>${data.supporterName}</strong>,
+        </p>
+  
+        <p>
+        Thank you for supporting
+        <strong>${data.campaignTitle}</strong>
+  
+        ${data.creatorName ? `by <strong>${data.creatorName}</strong>` : ""}.
+        </p>
+  
+        <table
+        style="
+        width:100%;
+        border-collapse:collapse;
+        margin-top:20px;
+        ">
+  
+        <tr>
+        <td style="padding:10px;color:#64748b">
+        Campaign
+        </td>
+  
+        <td
+        style="
+        padding:10px;
+        text-align:right;
+        font-weight:bold;
+        ">
+        ${data.campaignTitle}
+        </td>
+        </tr>
+  
+        <tr>
+        <td style="padding:10px;color:#64748b">
+        Contribution
+        </td>
+  
+        <td
+        style="
+        padding:10px;
+        text-align:right;
+        font-weight:bold;
+        ">
+        ${data.amount}
+        </td>
+        </tr>
+  
+        <tr>
+        <td style="padding:10px;color:#64748b">
+        Payment Method
+        </td>
+  
+        <td
+        style="
+        padding:10px;
+        text-align:right;
+        font-weight:bold;
+        ">
+        ${paymentMethodText}
+        </td>
+        </tr>
+  
+        ${
+          data.paymentMethod === "credits"
+            ? `
+        <tr>
+        <td style="padding:10px;color:#64748b">
+        Remaining Credits
+        </td>
+  
+        <td
+        style="
+        padding:10px;
+        text-align:right;
+        font-weight:bold;
+        ">
+        ${data.remainingCredits}
+        </td>
+        </tr>
+        `
+            : `
+        <tr>
+        <td style="padding:10px;color:#64748b">
+        Transaction ID
+        </td>
+  
+        <td
+        style="
+        padding:10px;
+        text-align:right;
+        font-size:12px;
+        ">
+        ${data.stripeSessionId ?? "N/A"}
+        </td>
+        </tr>
+        `
+        }
+  
+        <tr>
+        <td style="padding:10px;color:#64748b">
+        Status
+        </td>
+  
+        <td
+        style="
+        padding:10px;
+        text-align:right;
+        color:#f59e0b;
+        font-weight:bold;
+        ">
+        Pending Approval
+        </td>
+        </tr>
+  
+        <tr>
+        <td style="padding:10px;color:#64748b">
+        Date
+        </td>
+  
+        <td
+        style="
+        padding:10px;
+        text-align:right;
+        ">
+        ${formattedDate}
+        </td>
+        </tr>
+  
+        </table>
+  
+        <div style="text-align:center;margin-top:30px">
+  
+        <a
+        href="${process.env.NEXT_PUBLIC_BASE_URL}/explore/${data.campaignId}"
+        style="
+        display:inline-block;
+        background:#10b981;
+        color:white;
+        padding:12px 28px;
+        border-radius:999px;
+        text-decoration:none;
+        font-weight:bold;
+        ">
+        View Campaign
+        </a>
+  
         </div>
-      `,
+  
+        <p
+        style="
+        margin-top:30px;
+        color:#64748b;
+        font-size:14px;
+        ">
+        You can track this contribution anytime from your dashboard.
+        </p>
+  
+        </div>
+        `,
     });
   } catch (error) {
     console.error("Failed to send contribution confirmation email:", error);

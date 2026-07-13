@@ -65,12 +65,12 @@ router.get("/campaigns", async (req, res) => {
   }
 });
 
-router.get("/campaign/:id", async (req, res) => {
+router.get("/campaign/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const collections = await getCollections();
     const campaign = await collections.campaigns.findOne({
-      _id: new ObjectId(id),
+      _id: new ObjectId(id as string),
     });
 
     if (!campaign) {
@@ -151,6 +151,5 @@ router.post("/new/campaign", verifyToken, verifyCreator, async (req, res) => {
     res.status(500).json({ message: "Failed to create campaign" });
   }
 });
-
 
 export default router;
