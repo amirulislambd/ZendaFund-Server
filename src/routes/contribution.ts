@@ -184,13 +184,16 @@ router.get(
   async (req: AuthRequest, res) => {
     try {
       const supporterEmail = req.user!.email;
-      const { page = "1", limit = "10" } = req.query;
+      const { page = "1", limit = "10", status } = req.query;
 
       const pageNumber = Math.max(Number(page), 1);
       const pageSize = Math.max(Number(limit), 1);
 
       const collections = await getCollections();
-      const filter = { Supporter_email: supporterEmail };
+      const filter: Record<string, any> = { Supporter_email: supporterEmail };
+      if (typeof status === "string" && status.trim()) {
+        filter.status = status.trim();
+      }
 
       const total = await collections.contributions.countDocuments(filter);
       const contributions = await collections.contributions
@@ -224,7 +227,6 @@ router.get(
     }
   },
 );
- 
 
 
 export default router;

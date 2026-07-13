@@ -1,7 +1,7 @@
-import { Router } from "express";
+import { Router, Response } from "express";
 import { getCollections } from "../lib/mongodb";
 import { sendPaymentConfirmationEmail } from "../lib/stripe";
-import { verifySupporter, verifyToken } from "../middleware/auth";
+import { AuthRequest, verifySupporter, verifyToken } from "../middleware/auth";
 
 const router = Router();
 
@@ -21,7 +21,6 @@ router.post(
 
       const collections = await getCollections();
 
-      // ⚠️ idempotency check — success page reload হলে duplicate credit যোগ না হয় তার জন্য
       const existing = await collections.payments.findOne({ stripeSessionId });
       if (existing) {
         return res
@@ -54,4 +53,28 @@ router.post(
   },
 );
 
-  export default router
+router.get(
+  "/payments",
+  verifyToken,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const email = req.user?.email;
+      if (!email) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const collections = await getCollections();
+      const payments = await collections.payments
+        .find({ supporterEmail: email })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.status(200).json({ payments });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Failed to fetch payment history" });
+    }
+  },
+);
+
+export default router;
