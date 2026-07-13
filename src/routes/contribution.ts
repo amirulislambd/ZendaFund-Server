@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getCollections } from "../lib/mongodb";
 import { sendContributionConfirmationEmail } from "../lib/stripe";
-import { verifySupporter, verifyToken } from "../middleware/auth";
+import { AuthRequest, verifySupporter, verifyToken } from "../middleware/auth";
 
 const router = Router();
 
@@ -164,12 +164,6 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
       contributionId: result.insertedId,
       contribution,
     });
-
-    return res.status(201).json({
-      success: true,
-      contributionId: result.insertedId,
-      contribution,
-    });
   } catch (error) {
     console.error(error);
 
@@ -178,5 +172,59 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
     });
   }
 });
+
+// / GET /api/contributions/my-contributions — only the logged-in Supporter's
+// own contributions. Email comes from the verified token (req.user.email),
+// never from a client-supplied query param, so a Supporter can't read
+// another Supporter's contributions by editing the URL.
+router.get(
+  "/contributions/my-contributions",
+  verifyToken,
+  verifySupporter,
+  async (req: AuthRequest, res) => {
+    try {
+      const supporterEmail = req.user!.email;
+      const { page = "1", limit = "10" } = req.query;
+
+      const pageNumber = Math.max(Number(page), 1);
+      const pageSize = Math.max(Number(limit), 1);
+
+      const collections = await getCollections();
+      const filter = { Supporter_email: supporterEmail };
+
+      const total = await collections.contributions.countDocuments(filter);
+      const contributions = await collections.contributions
+        .find(filter)
+        .sort({ current_date: -1 })
+        .skip((pageNumber - 1) * pageSize)
+        .limit(pageSize)
+        .toArray();
+
+      res.json({
+        contributions: contributions.map((c) => ({
+          id: String(c._id),
+          campaign_id: c.campaign_id,
+          campaign_title: c.campaign_title,
+          Contribution_amount: c.Contribution_amount,
+          paymentMethod: c.paymentMethod ?? null,
+          creator_name: c.creator_name,
+          current_date: c.current_date,
+          status: c.status,
+        })),
+        pagination: {
+          page: pageNumber,
+          limit: pageSize,
+          total,
+          pages: Math.ceil(total / pageSize),
+        },
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Failed to load contributions" });
+    }
+  },
+);
+ 
+
 
 export default router;
