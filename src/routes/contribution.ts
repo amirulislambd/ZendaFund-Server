@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getCollections } from "../lib/mongodb";
 import { sendContributionConfirmationEmail } from "../lib/stripe";
 import { AuthRequest, verifySupporter, verifyToken } from "../middleware/auth";
+import { usdToCredits } from "../lib/constants";
 
 const router = Router();
 
@@ -10,7 +11,8 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
     const {
       campaign_id,
       campaign_title,
-      Contribution_amount,
+      Contribution_amount, // credits পেমেন্টে ব্যবহার হবে
+      amountUsd, // card পেমেন্টে ব্যবহার হবে
       Supporter_email,
       Supporter_name,
       creator_name,
@@ -24,7 +26,6 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
     if (
       !campaign_id ||
       !campaign_title ||
-      !Contribution_amount ||
       !Supporter_email ||
       !Supporter_name ||
       !paymentMethod
@@ -33,30 +34,19 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
     }
 
     const contributionDate = current_date ? new Date(current_date) : new Date();
-
-    const amount = Number(Contribution_amount);
-
     const collections = await getCollections();
 
     let supporter: any = null;
-
-    /**
-     * ----------------------------------
-     * CARD PAYMENT
-     * ----------------------------------
-     */
+    let amount: number;
 
     if (paymentMethod === "card") {
       if (!stripeSessionId) {
-        return res.status(400).json({
-          message: "Missing Stripe Session Id",
-        });
+        return res.status(400).json({ message: "Missing Stripe Session Id" });
       }
 
       const existing = await collections.contributions.findOne({
         stripeSessionId,
       });
-
       if (existing) {
         return res.status(200).json({
           success: true,
@@ -64,77 +54,51 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
           contribution: existing,
         });
       }
-    }
 
-    /**
-     * ----------------------------------
-     * CREDIT PAYMENT
-     * ----------------------------------
-     */
-
-    if (paymentMethod === "credits") {
-      supporter = await collections.user.findOne({
-        email: Supporter_email,
-      });
-
-      if (!supporter) {
-        return res.status(404).json({
-          message: "Supporter not found",
-        });
+      const usd = Number(amountUsd);
+      if (!usd || usd <= 0) {
+        return res.status(400).json({ message: "Invalid payment amount" });
       }
 
+      // ⚠️ মূল conversion — এখানে, backend এ
+      amount = usdToCredits(usd);
+    } else if (paymentMethod === "credits") {
+      amount = Number(Contribution_amount);
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ message: "Invalid contribution amount" });
+      }
+
+      supporter = await collections.user.findOne({ email: Supporter_email });
+      if (!supporter) {
+        return res.status(404).json({ message: "Supporter not found" });
+      }
       if ((supporter.credits ?? 0) < amount) {
-        return res.status(400).json({
-          message: "Insufficient credits",
-        });
+        return res.status(400).json({ message: "Insufficient credits" });
       }
 
       await collections.user.updateOne(
-        {
-          email: Supporter_email,
-        },
-        {
-          $inc: {
-            credits: -amount,
-          },
-        },
+        { email: Supporter_email },
+        { $inc: { credits: -amount } },
       );
+    } else {
+      return res.status(400).json({ message: "Invalid payment method" });
     }
-
-    /**
-     * ----------------------------------
-     * SAVE CONTRIBUTION
-     * ----------------------------------
-     */
 
     const contribution = {
       campaign_id,
       campaign_title,
-
       Contribution_amount: amount,
-
       paymentMethod,
-
       stripeSessionId: stripeSessionId ?? null,
-
       Supporter_email,
       Supporter_name,
-
       creator_name,
       creator_email,
-
       current_date: contributionDate,
-
       status: status ?? "pending",
     };
 
     const result = await collections.contributions.insertOne(contribution);
-
-    /**
-     * ----------------------------------
-     * EMAIL
-     * ----------------------------------
-     */
 
     const emailData = {
       toEmail: Supporter_email,
@@ -145,14 +109,9 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
       creatorName: creator_name,
       date: contributionDate,
       paymentMethod,
-
       ...(paymentMethod === "credits"
-        ? {
-            remainingCredits: supporter.credits - amount,
-          }
-        : {
-            stripeSessionId,
-          }),
+        ? { remainingCredits: supporter.credits - amount }
+        : { stripeSessionId }),
     };
 
     sendContributionConfirmationEmail(emailData);
@@ -164,10 +123,7 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-
-    return res.status(500).json({
-      message: "Failed to save contribution",
-    });
+    return res.status(500).json({ message: "Failed to save contribution" });
   }
 });
 
