@@ -13,6 +13,7 @@ router.get("/campaigns", async (req, res) => {
       page = "1",
       limit = "12",
       sort = "newest",
+      activeOnly,
     } = req.query;
     const pageNumber = Math.max(Number(page), 1);
     const pageSize = Math.max(Number(limit), 1);
