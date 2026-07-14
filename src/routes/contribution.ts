@@ -17,8 +17,6 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
       creator_email,
       current_date,
       status,
-
-      // NEW
       paymentMethod,
       stripeSessionId,
     } = req.body;
@@ -180,22 +178,43 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
 router.get(
   "/contributions/my-contributions",
   verifyToken,
-  verifySupporter,
   async (req: AuthRequest, res) => {
     try {
-      const supporterEmail = req.user!.email;
+      const email = req.user?.email;
+      const role = req.user?.role;
+
+      if (!email) {
+        return res.status(401).json({
+          message: "Unauthorized",
+        });
+      }
+
       const { page = "1", limit = "10", status } = req.query;
 
       const pageNumber = Math.max(Number(page), 1);
       const pageSize = Math.max(Number(limit), 1);
 
       const collections = await getCollections();
-      const filter: Record<string, any> = { Supporter_email: supporterEmail };
+
+      const filter: Record<string, any> = {};
+
+      // Supporter
+      if (role === "supporter") {
+        filter.Supporter_email = email;
+      }
+
+      // Creator
+      if (role === "creator") {
+        filter.creator_email = email;
+      }
+
+      // Optional status filter
       if (typeof status === "string" && status.trim()) {
         filter.status = status.trim();
       }
 
       const total = await collections.contributions.countDocuments(filter);
+
       const contributions = await collections.contributions
         .find(filter)
         .sort({ current_date: -1 })
@@ -203,17 +222,30 @@ router.get(
         .limit(pageSize)
         .toArray();
 
-      res.json({
+      res.status(200).json({
         contributions: contributions.map((c) => ({
           id: String(c._id),
+
           campaign_id: c.campaign_id,
           campaign_title: c.campaign_title,
+
           Contribution_amount: c.Contribution_amount,
+
           paymentMethod: c.paymentMethod ?? null,
+
+          Supporter_email: c.Supporter_email,
+          Supporter_name: c.Supporter_name,
+
+          creator_email: c.creator_email,
           creator_name: c.creator_name,
+
           current_date: c.current_date,
+
           status: c.status,
+
+          rejectReason: c.rejectReason ?? null,
         })),
+
         pagination: {
           page: pageNumber,
           limit: pageSize,
@@ -223,10 +255,14 @@ router.get(
       });
     } catch (error) {
       console.error(error);
-      res.status(500).json({ message: "Failed to load contributions" });
+
+      res.status(500).json({
+        message: "Failed to load contributions",
+      });
     }
   },
 );
+
 
 
 export default router;
