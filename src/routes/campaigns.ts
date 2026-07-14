@@ -20,6 +20,10 @@ router.get("/campaigns", async (req, res) => {
 
     const filter: Record<string, any> = { status: "approved" };
 
+    if (activeOnly === "true") {
+      filter.deadline = { $gte: new Date() };
+    }
+
     if (typeof category === "string" && category.trim()) {
       filter.category = category.trim();
     }

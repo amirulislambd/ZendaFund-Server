@@ -15,11 +15,13 @@ import campaignRoutes from "./src/routes/campaigns";
 import authRoutes from "./src/routes/auth";
 import contributionRoutes from "./src/routes/contribution";
 import paymentRoutes from "./src/routes/payments";
+import statsRoutes from "./src/routes/stats";
 
 app.use("/api", campaignRoutes);
 app.use("/api", authRoutes);
 app.use("/api", contributionRoutes);
 app.use("/api", paymentRoutes);
+app.use("/api", statsRoutes);
 
 app.get("/", (req, res) => {
   res.send("ZendaFund API is running, MongoDB connected ✅");
