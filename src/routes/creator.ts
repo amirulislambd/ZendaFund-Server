@@ -140,4 +140,250 @@ router.patch(
   },
 );
 
+
+router.get(
+  "/creator/withdrawals/overview",
+  verifyToken,
+  verifyCreator,
+  async (req: AuthRequest, res) => {
+    try {
+      const email = req.user?.email;
+
+      if (!email) {
+        return res.status(401).json({
+          message: "Unauthorized",
+        });
+      }
+
+      const collections = await getCollections();
+
+      /**
+       * Total Approved Raised Credits
+       */
+
+      const raisedResult = await collections.contributions
+        .aggregate([
+          {
+            $match: {
+              creator_email: email,
+              status: "approved",
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalRaisedCredits: {
+                $sum: "$Contribution_amount",
+              },
+            },
+          },
+        ])
+        .toArray();
+
+      /**
+       * Total Approved Withdrawn Credits
+       */
+
+      const withdrawnResult = await collections.withdrawals
+        .aggregate([
+          {
+            $match: {
+              creator_email: email,
+              status: "approved",
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalWithdrawnCredits: {
+                $sum: "$withdrawal_credit",
+              },
+            },
+          },
+        ])
+        .toArray();
+
+      const totalRaisedCredits = raisedResult[0]?.totalRaisedCredits ?? 0;
+
+      const totalWithdrawnCredits =
+        withdrawnResult[0]?.totalWithdrawnCredits ?? 0;
+
+      const availableCredits = totalRaisedCredits - totalWithdrawnCredits;
+
+      const withdrawableAmount = Number((availableCredits / 20).toFixed(2));
+
+      const eligibleForWithdrawal = availableCredits >= 200;
+
+      return res.status(200).json({
+        success: true,
+
+        stats: {
+          totalRaisedCredits,
+          totalWithdrawnCredits,
+          availableCredits,
+          withdrawableAmount,
+          eligibleForWithdrawal,
+        },
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        message: "Failed to load withdrawal overview",
+      });
+    }
+  },
+);
+
+router.post(
+  "/creator/withdrawals",
+  verifyToken,
+  verifyCreator,
+  async (req: AuthRequest, res) => {
+    try {
+      const email = req.user?.email;
+
+      if (!email) {
+        return res.status(401).json({
+          message: "Unauthorized",
+        });
+      }
+
+      const { withdrawal_credit, payment_system, account_number } = req.body;
+
+      const creditAmount = Number(withdrawal_credit);
+
+      if (
+        !creditAmount ||
+        creditAmount <= 0 ||
+        !payment_system ||
+        !account_number
+      ) {
+        return res.status(400).json({
+          message: "All fields are required",
+        });
+      }
+
+      const collections = await getCollections();
+
+      const creator = await collections.user.findOne({
+        email,
+      });
+
+      if (!creator) {
+        return res.status(404).json({
+          message: "Creator not found",
+        });
+      }
+
+      /**
+       * Total Approved Contributions
+       */
+
+      const raisedResult = await collections.contributions
+        .aggregate([
+          {
+            $match: {
+              creator_email: email,
+              status: "approved",
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalRaisedCredits: {
+                $sum: "$Contribution_amount",
+              },
+            },
+          },
+        ])
+        .toArray();
+
+      /**
+       * Total Pending + Approved Withdrawals
+       */
+
+      const withdrawalResult = await collections.withdrawals
+        .aggregate([
+          {
+            $match: {
+              creator_email: email,
+              status: {
+                $in: ["pending", "approved"],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalWithdrawalCredits: {
+                $sum: "$withdrawal_credit",
+              },
+            },
+          },
+        ])
+        .toArray();
+
+      const totalRaisedCredits = raisedResult[0]?.totalRaisedCredits ?? 0;
+
+      const totalWithdrawalCredits =
+        withdrawalResult[0]?.totalWithdrawalCredits ?? 0;
+
+      const availableCredits = totalRaisedCredits - totalWithdrawalCredits;
+
+      /**
+       * Minimum Withdrawal Rule
+       */
+
+      if (availableCredits < 200) {
+        return res.status(400).json({
+          message: "Minimum 200 available credits required for withdrawal",
+        });
+      }
+
+      /**
+       * Prevent Over Withdrawal
+       */
+
+      if (creditAmount > availableCredits) {
+        return res.status(400).json({
+          message: "Insufficient available credits",
+        });
+      }
+
+      const withdrawalAmount = Number((creditAmount / 20).toFixed(2));
+
+      const withdrawal = {
+        creator_email: creator.email,
+        creator_name: creator.name,
+
+        withdrawal_credit: creditAmount,
+        withdrawal_amount: withdrawalAmount,
+
+        payment_system,
+        account_number,
+
+        withdraw_date: new Date(),
+
+        status: "pending",
+      };
+
+      const result = await collections.withdrawals.insertOne(withdrawal);
+
+      return res.status(201).json({
+        success: true,
+        message: "Withdrawal request submitted successfully",
+        withdrawalId: result.insertedId,
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        message: "Failed to create withdrawal request",
+      });
+    }
+  },
+);
+
+
 export default router;

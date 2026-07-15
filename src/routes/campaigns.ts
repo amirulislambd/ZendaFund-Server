@@ -300,3 +300,97 @@ router.patch(
     }
   },
 );
+
+router.delete(
+  "/creator/campaigns/:id",
+  verifyToken,
+  verifyCreator,
+  async (req: AuthRequest, res) => {
+    try {
+      const campaignId = req.params.id;
+      const creatorEmail = req.user?.email;
+
+      if (!campaignId || Array.isArray(campaignId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid campaign id",
+        });
+      }
+
+      if (!campaignId || !ObjectId.isValid(campaignId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid campaign id",
+        });
+      }
+
+      const collections = await getCollections();
+
+      // Check campaign ownership
+      const campaign = await collections.campaigns.findOne({
+        _id: new ObjectId(campaignId),
+        creatorEmail,
+      });
+
+      if (!campaign) {
+        return res.status(404).json({
+          success: false,
+          message: "Campaign not found",
+        });
+      }
+
+      // Get approved contributions
+      const approvedContributions = await collections.contributions
+        .find({
+          campaign_id: campaignId,
+          status: "approved",
+        })
+        .toArray();
+
+      // Refund credits
+      for (const contribution of approvedContributions) {
+        await collections.user.updateOne(
+          {
+            email: contribution.Supporter_email,
+          },
+          {
+            $inc: {
+              credits: contribution.Contribution_amount,
+            },
+          },
+        );
+      }
+
+      // Optional: keep contribution history
+      await collections.contributions.updateMany(
+        {
+          campaign_id: campaignId,
+          status: "approved",
+        },
+        {
+          $set: {
+            status: "refunded",
+            refundedAt: new Date(),
+          },
+        },
+      );
+
+      // Delete campaign
+      await collections.campaigns.deleteOne({
+        _id: new ObjectId(campaignId),
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Campaign deleted successfully.",
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Failed to delete campaign.",
+      });
+    }
+  },
+);
