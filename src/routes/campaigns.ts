@@ -226,3 +226,77 @@ router.get(
     }
   },
 );
+
+router.patch(
+  "/campaigns/:id",
+  verifyToken,
+  verifyCreator,
+  async (req: AuthRequest, res) => {
+    try {
+      const { id } = req.params;
+      const creatorEmail = req.user?.email;
+
+      if (!id || Array.isArray(id) || !ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "Invalid campaign id" });
+      }
+
+      if (!id || !ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "Invalid campaign id" });
+      }
+
+      const collections = await getCollections();
+      const campaign = await collections.campaigns.findOne({
+        _id: new ObjectId(id),
+      });
+
+      if (!campaign) {
+        return res.status(404).json({ message: "Campaign not found" });
+      }
+
+      if (campaign.creatorEmail !== creatorEmail) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const {
+        category,
+        campaign_title,
+        deadline,
+        funding_goal,
+        minimum_contribution,
+        campaign_story,
+        reward_info,
+        campaign_image_url,
+      } = req.body;
+
+      const updateFields: Record<string, any> = { updatedAt: new Date() };
+
+      if (category) updateFields.category = category;
+      if (campaign_title) updateFields.title = campaign_title;
+      if (deadline) updateFields.deadline = new Date(deadline);
+      if (funding_goal) updateFields.goal = Number(funding_goal);
+      if (minimum_contribution)
+        updateFields.minimumContribution = Number(minimum_contribution);
+      if (campaign_story) updateFields.description = campaign_story;
+      if (reward_info) updateFields.rewardInfo = reward_info;
+      if (campaign_image_url) updateFields.imageUrl = campaign_image_url;
+
+      await collections.campaigns.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updateFields },
+      );
+
+      const updatedCampaign = await collections.campaigns.findOne({
+        _id: new ObjectId(id),
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Campaign updated",
+        campaign: updatedCampaign,
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: "Failed to update campaign" });
+    }
+  },
+);
