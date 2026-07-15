@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { ObjectId, Sort } from "mongodb";
 import { getCollections } from "../lib/mongodb";
-import { verifyToken, verifyCreator } from "../middleware/auth";
+import { verifyToken, verifyCreator, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
@@ -158,3 +158,71 @@ router.post("/new/campaign", verifyToken, verifyCreator, async (req, res) => {
 });
 
 export default router;
+
+router.get(
+  "/creator/campaigns/my-campaigns",
+  verifyToken,
+  verifyCreator,
+  async (req: AuthRequest, res) => {
+    try {
+      const creatorEmail = req.user?.email;
+
+      if (!creatorEmail) {
+        return res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+      }
+
+      const page = Math.max(Number(req.query.page) || 1, 1);
+      const limit = Math.max(Number(req.query.limit) || 10, 1);
+      const skip = (page - 1) * limit;
+
+      const collections = await getCollections();
+
+      const query = {
+        creatorEmail,
+      };
+
+      const total = await collections.campaigns.countDocuments(query);
+
+      const campaigns = await collections.campaigns
+        .find(query)
+        .sort({
+          deadline: -1,
+        })
+        .skip(skip)
+        .limit(limit)
+        .project({
+          title: 1,
+          category: 1,
+          goal: 1,
+          raisedAmount: 1,
+          deadline: 1,
+          status: 1,
+          createdAt: 1,
+        })
+        .toArray();
+
+      return res.status(200).json({
+        success: true,
+        data: campaigns,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNextPage: page < Math.ceil(total / limit),
+          hasPrevPage: page > 1,
+        },
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Failed to load campaigns",
+      });
+    }
+  },
+);
