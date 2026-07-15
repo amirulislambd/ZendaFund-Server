@@ -467,4 +467,72 @@ router.get(
   },
 );
 
+
+router.get(
+  "/creator/dashboard-overview",
+  verifyToken,
+  verifyCreator,
+  async (req: AuthRequest, res) => {
+    try {
+      const email = req.user?.email;
+
+      if (!email) {
+        return res.status(401).json({
+          message: "Unauthorized",
+        });
+      }
+
+      const collections = await getCollections();
+
+      const totalCampaigns = await collections.campaigns.countDocuments({
+        creatorEmail: email,
+      });
+
+      const activeCampaigns = await collections.campaigns.countDocuments({
+        creatorEmail: email,
+        deadline: {
+          $gte: new Date(),
+        },
+      });
+
+      const raisedResult = await collections.contributions
+        .aggregate([
+          {
+            $match: {
+              creator_email: email,
+              status: "approved",
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalRaisedCredits: {
+                $sum: "$Contribution_amount",
+              },
+            },
+          },
+        ])
+        .toArray();
+
+      const totalRaisedCredits = raisedResult[0]?.totalRaisedCredits ?? 0;
+
+      return res.status(200).json({
+        success: true,
+        stats: {
+          totalCampaigns,
+          activeCampaigns,
+          totalRaisedCredits,
+        },
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        message: "Failed to load creator dashboard overview",
+      });
+    }
+  },
+);
+
+
 export default router;
