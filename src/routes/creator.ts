@@ -228,6 +228,7 @@ router.get(
     }
   },
 );
+
 router.post(
   "/creator/withdrawals",
   verifyToken,
@@ -401,6 +402,66 @@ router.post(
 
       return res.status(500).json({
         message: "Failed to create withdrawal request",
+      });
+    }
+  },
+);
+
+router.get(
+  "/creator/withdrawals",
+  verifyToken,
+  verifyCreator,
+  async (req: AuthRequest, res) => {
+    try {
+      const email = req.user?.email;
+
+      if (!email) {
+        return res.status(401).json({
+          message: "Unauthorized",
+        });
+      }
+
+      const { status, page = "1", limit = "10" } = req.query;
+
+      const currentPage = Number(page);
+      const pageSize = Number(limit);
+
+      const collections = await getCollections();
+
+      const query: any = {
+        creator_email: email,
+      };
+
+      if (status) {
+        query.status = status;
+      }
+
+      const total = await collections.withdrawals.countDocuments(query);
+
+      const withdrawals = await collections.withdrawals
+        .find(query)
+        .sort({
+          withdraw_date: -1,
+        })
+        .skip((currentPage - 1) * pageSize)
+        .limit(pageSize)
+        .toArray();
+
+      return res.status(200).json({
+        success: true,
+        withdrawals,
+        pagination: {
+          page: currentPage,
+          limit: pageSize,
+          total,
+          pages: Math.ceil(total / pageSize),
+        },
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        message: "Failed to load withdrawals",
       });
     }
   },
