@@ -10,6 +10,7 @@ router.get("/campaigns", async (req, res) => {
     const {
       q,
       category,
+      status,
       page = "1",
       limit = "12",
       sort = "newest",
@@ -18,7 +19,13 @@ router.get("/campaigns", async (req, res) => {
     const pageNumber = Math.max(Number(page), 1);
     const pageSize = Math.max(Number(limit), 1);
 
-    const filter: Record<string, any> = { status: "approved" };
+    const filter: Record<string, any> = {};
+
+    if (typeof status === "string" && status.trim()) {
+      filter.status = status;
+    } else {
+      filter.status = "approved";
+    }
 
     if (activeOnly === "true") {
       filter.deadline = { $gte: new Date() };

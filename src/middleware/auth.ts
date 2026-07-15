@@ -15,7 +15,6 @@ export const verifyToken = async (req: AuthRequest, res: Response, next: NextFun
   const authorizationHeader = req.headers.authorization;
   console.log("Authorization header:", req.headers.authorization);
 
-  
   if (!authorizationHeader) {
     return res.status(401).json({ error: "Unauthorized access" });
   }
@@ -25,17 +24,19 @@ export const verifyToken = async (req: AuthRequest, res: Response, next: NextFun
     return res.status(401).json({ error: "Unauthorized access" });
   }
 
-  console.log("Token received:", token);
+  // console.log("Token received:", token);
 
   try {
     const collections = await getCollections();
     const session = await collections.session.findOne({ token });
-    console.log("Session found:", session);
+    // console.log("Session found:", session);
     if (!session) {
       return res.status(401).json({ error: "Unauthorized access" });
     }
 
-    const user = await collections.user.findOne({ _id: new ObjectId(session.userId) });
+    const user = await collections.user.findOne({
+      _id: new ObjectId(session.userId),
+    });
     if (!user) {
       return res.status(401).json({ error: "Unauthorized access" });
     }
@@ -58,7 +59,7 @@ export const verifyToken = async (req: AuthRequest, res: Response, next: NextFun
     console.error(error);
     res.status(401).json({ error: "Unauthorized access" });
   }
-};
+};;
 
 export const verifyAdmin = async (req: AuthRequest, res: Response, next: NextFunction) => {
   const user = req.user;
