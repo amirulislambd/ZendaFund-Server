@@ -144,7 +144,7 @@ router.post("/new/campaign", verifyToken, verifyCreator, async (req, res) => {
       createdAt,
       updatedAt: createdAt,
     };
-    console.log("campaign", campaign);
+    // console.log("campaign", campaign);
     const collections = await getCollections();
     const result = await collections.campaigns.insertOne(campaign);
 

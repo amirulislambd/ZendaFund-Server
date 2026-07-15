@@ -157,10 +157,6 @@ router.get(
 
       const collections = await getCollections();
 
-      /**
-       * Total Approved Raised Credits
-       */
-
       const raisedResult = await collections.contributions
         .aggregate([
           {
@@ -179,10 +175,6 @@ router.get(
           },
         ])
         .toArray();
-
-      /**
-       * Total Approved Withdrawn Credits
-       */
 
       const withdrawnResult = await collections.withdrawals
         .aggregate([
@@ -208,20 +200,22 @@ router.get(
       const totalWithdrawnCredits =
         withdrawnResult[0]?.totalWithdrawnCredits ?? 0;
 
-      const availableCredits = totalRaisedCredits - totalWithdrawnCredits;
+      const availableCredits = Math.max(
+        totalRaisedCredits - totalWithdrawnCredits,
+        0,
+      );
 
-      const withdrawableAmount = Number((availableCredits / 20).toFixed(2));
+      const availableEarnings = Number((availableCredits / 20).toFixed(2));
 
       const eligibleForWithdrawal = availableCredits >= 200;
 
       return res.status(200).json({
         success: true,
-
         stats: {
           totalRaisedCredits,
-          totalWithdrawnCredits,
+          withdrawnCredits: totalWithdrawnCredits,
           availableCredits,
-          withdrawableAmount,
+          availableEarnings,
           eligibleForWithdrawal,
         },
       });
@@ -234,7 +228,6 @@ router.get(
     }
   },
 );
-
 router.post(
   "/creator/withdrawals",
   verifyToken,
@@ -249,18 +242,33 @@ router.post(
         });
       }
 
-      const { withdrawal_credit, payment_system, account_number } = req.body;
+      /**
+       * Parse body
+       */
+      const body =
+        typeof req.body.body === "string"
+          ? JSON.parse(req.body.body)
+          : req.body;
+
+      const { withdrawal_credit, payment_system, account_number } = body;
 
       const creditAmount = Number(withdrawal_credit);
 
-      if (
-        !creditAmount ||
-        creditAmount <= 0 ||
-        !payment_system ||
-        !account_number
-      ) {
+      /**
+       * Basic Validation
+       */
+      if (!creditAmount || creditAmount <= 0 || !payment_system) {
         return res.status(400).json({
-          message: "All fields are required",
+          message: "All required fields must be provided",
+        });
+      }
+
+      /**
+       * Stripe does not require account number
+       */
+      if (payment_system !== "Stripe" && !account_number) {
+        return res.status(400).json({
+          message: "Account number is required",
         });
       }
 
@@ -279,7 +287,6 @@ router.post(
       /**
        * Total Approved Contributions
        */
-
       const raisedResult = await collections.contributions
         .aggregate([
           {
@@ -302,7 +309,6 @@ router.post(
       /**
        * Total Pending + Approved Withdrawals
        */
-
       const withdrawalResult = await collections.withdrawals
         .aggregate([
           {
@@ -332,25 +338,36 @@ router.post(
       const availableCredits = totalRaisedCredits - totalWithdrawalCredits;
 
       /**
-       * Minimum Withdrawal Rule
+       * Creator must have at least 200 available credits
        */
-
       if (availableCredits < 200) {
         return res.status(400).json({
-          message: "Minimum 200 available credits required for withdrawal",
+          message:
+            "You need at least 200 available credits to request a withdrawal",
         });
       }
 
       /**
-       * Prevent Over Withdrawal
+       * Minimum withdrawal request
        */
+      if (creditAmount < 200) {
+        return res.status(400).json({
+          message: "Minimum withdrawal request is 200 credits",
+        });
+      }
 
+      /**
+       * Prevent over-withdrawal
+       */
       if (creditAmount > availableCredits) {
         return res.status(400).json({
           message: "Insufficient available credits",
         });
       }
 
+      /**
+       * 20 Credits = 1 Dollar
+       */
       const withdrawalAmount = Number((creditAmount / 20).toFixed(2));
 
       const withdrawal = {
@@ -361,11 +378,15 @@ router.post(
         withdrawal_amount: withdrawalAmount,
 
         payment_system,
-        account_number,
+        account_number: payment_system === "Stripe" ? null : account_number,
 
         withdraw_date: new Date(),
 
         status: "pending",
+
+        approved_at: null,
+        rejected_at: null,
+        rejection_reason: null,
       };
 
       const result = await collections.withdrawals.insertOne(withdrawal);
@@ -384,6 +405,5 @@ router.post(
     }
   },
 );
-
 
 export default router;
