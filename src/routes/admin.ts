@@ -189,4 +189,37 @@ router.get(
   );
   
 
+  router.get(
+    "/admin/withdrawals",
+    verifyToken,
+    verifyAdmin,
+    async (req, res) => {
+      try {
+        const collections = await getCollections();
+
+        const withdrawals = await collections.withdrawals
+          .find({
+            status: "pending",
+          })
+          .sort({
+            withdraw_date: -1,
+          })
+          .toArray();
+
+        res.json({
+          success: true,
+          withdrawals,
+        });
+      } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+          success: false,
+          message: "Failed to load withdrawals",
+        });
+      }
+    },
+  );
+
+
   export default router
