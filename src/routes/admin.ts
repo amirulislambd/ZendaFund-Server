@@ -118,53 +118,53 @@ router.get(
           });
         }
   
-        /**
-         * Handle body coming from ServerMutation
-         */
         const body =
           typeof req.body.body === "string"
             ? JSON.parse(req.body.body)
             : req.body;
-  
-        const { status } = body;
-  
-        if (
-          !status ||
-          !["approved", "rejected"].includes(status)
-        ) {
+
+        const { status, rejectionMessage } = body;
+
+        if (!status || !["approved", "rejected"].includes(status)) {
           return res.status(400).json({
             success: false,
-            message:
-              "Status must be approved or rejected",
+            message: "Status must be approved or rejected",
           });
         }
-  
-        const collections = await getCollections();
-  
-        const campaign =
-          await collections.campaigns.findOne({
-            _id: new ObjectId(id),
+
+        if (status === "rejected" && !rejectionMessage?.trim()) {
+          return res.status(400).json({
+            success: false,
+            message: "Rejection reason is required",
           });
-  
+        }
+
+        const collections = await getCollections();
+
+        const campaign = await collections.campaigns.findOne({
+          _id: new ObjectId(id),
+        });
+
         if (!campaign) {
           return res.status(404).json({
             success: false,
             message: "Campaign not found",
           });
         }
-  
-        const result =
-          await collections.campaigns.updateOne(
-            {
-              _id: new ObjectId(id),
-            },
-            {
-              $set: {
-                status,
-                updatedAt: new Date(),
-              },
-            },
-          );
+
+        const updateFields: Record<string, unknown> = {
+          status,
+          updatedAt: new Date(),
+        };
+
+        if (status === "rejected") {
+          updateFields.rejectionMessage = rejectionMessage.trim();
+        }
+
+        const result = await collections.campaigns.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateFields },
+        );
   
         if (!result.modifiedCount) {
           return res.status(400).json({
