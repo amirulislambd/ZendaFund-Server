@@ -534,5 +534,119 @@ router.get(
   },
 );
 
+router.get(
+  "/creator/performance-chart",
+  verifyToken,
+  verifyCreator,
+  async (req: AuthRequest, res) => {
+    try {
+      const email = req.user?.email;
+
+      if (!email) {
+        return res.status(401).json({
+          message: "Unauthorized",
+        });
+      }
+
+      const collections = await getCollections();
+
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+
+      const contributions = await collections.contributions
+        .aggregate([
+          {
+            $match: {
+              creator_email: email,
+              status: "approved",
+            },
+          },
+          {
+            $addFields: {
+              contributionDate: {
+                $toDate: "$current_date",
+              },
+            },
+          },
+          {
+            $match: {
+              contributionDate: {
+                $gte: sixMonthsAgo,
+              },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                year: {
+                  $year: "$contributionDate",
+                },
+                month: {
+                  $month: "$contributionDate",
+                },
+              },
+              credits: {
+                $sum: "$Contribution_amount",
+              },
+            },
+          },
+          {
+            $sort: {
+              "_id.year": 1,
+              "_id.month": 1,
+            },
+          },
+        ])
+        .toArray();
+
+      const monthNames = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+
+      // Last 6 months template
+      const chartData = [];
+
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+
+        date.setMonth(date.getMonth() - i);
+
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+
+        const existing = contributions.find(
+          (item) => item._id.year === year && item._id.month === month,
+        );
+
+        chartData.push({
+          month: monthNames[month - 1],
+          credits: existing?.credits || 0,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        chartData,
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        message: "Failed to load performance chart",
+      });
+    }
+  },
+);
 
 export default router;
