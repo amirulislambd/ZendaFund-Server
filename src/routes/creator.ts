@@ -157,6 +157,9 @@ router.get(
 
       const collections = await getCollections();
 
+      /**
+       * Total Raised Credits
+       */
       const raisedResult = await collections.contributions
         .aggregate([
           {
@@ -176,7 +179,10 @@ router.get(
         ])
         .toArray();
 
-      const withdrawnResult = await collections.withdrawals
+      /**
+       * Total Approved Withdrawals Only
+       */
+      const withdrawalResult = await collections.withdrawals
         .aggregate([
           {
             $match: {
@@ -198,13 +204,19 @@ router.get(
       const totalRaisedCredits = raisedResult[0]?.totalRaisedCredits ?? 0;
 
       const totalWithdrawnCredits =
-        withdrawnResult[0]?.totalWithdrawnCredits ?? 0;
+        withdrawalResult[0]?.totalWithdrawnCredits ?? 0;
 
+      /**
+       * Available Credits
+       */
       const availableCredits = Math.max(
         totalRaisedCredits - totalWithdrawnCredits,
         0,
       );
 
+      /**
+       * 20 Credits = 1 USD
+       */
       const availableEarnings = Number((availableCredits / 20).toFixed(2));
 
       const eligibleForWithdrawal = availableCredits >= 200;
@@ -384,10 +396,6 @@ router.post(
         withdraw_date: new Date(),
 
         status: "pending",
-
-        approved_at: null,
-        rejected_at: null,
-        rejection_reason: null,
       };
 
       const result = await collections.withdrawals.insertOne(withdrawal);

@@ -221,5 +221,139 @@ router.get(
     },
   );
 
+  router.patch(
+    "/admin/withdrawals/:id/approve",
+    verifyToken,
+    verifyAdmin,
+    async (req: AuthRequest, res) => {
+      try {
+        const id = req.params.id;
+
+        if (!id || Array.isArray(id)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid withdrawal id",
+          });
+        }
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid withdrawal id format",
+          });
+        }
+
+        const collections = await getCollections();
+
+        const withdrawal = await collections.withdrawals.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!withdrawal) {
+          return res.status(404).json({
+            success: false,
+            message: "Withdrawal request not found",
+          });
+        }
+
+        if (withdrawal.status === "approved") {
+          return res.status(400).json({
+            success: false,
+            message: "Withdrawal already approved",
+          });
+        }
+
+        /**
+         * Safety check — calculate the creator's available credits directly:
+         * total approved contributions raised for their campaigns, minus
+         * already-approved withdrawals. Derived fresh, not tied to a single
+         * campaign's raisedAmount.
+         */
+        const raisedResult = await collections.contributions
+          .aggregate([
+            {
+              $match: {
+                creator_email: withdrawal.creator_email,
+                status: "approved",
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalRaisedCredits: { $sum: "$Contribution_amount" },
+              },
+            },
+          ])
+          .toArray();
+
+        const withdrawnResult = await collections.withdrawals
+          .aggregate([
+            {
+              $match: {
+                creator_email: withdrawal.creator_email,
+                status: "approved",
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalWithdrawnCredits: { $sum: "$withdrawal_credit" },
+              },
+            },
+          ])
+          .toArray();
+
+        const totalRaisedCredits = raisedResult[0]?.totalRaisedCredits ?? 0;
+        const totalWithdrawnCredits =
+          withdrawnResult[0]?.totalWithdrawnCredits ?? 0;
+        const availableCredits = Math.max(
+          totalRaisedCredits - totalWithdrawnCredits,
+          0,
+        );
+
+        if (availableCredits < withdrawal.withdrawal_credit) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Creator does not have enough available credits for this withdrawal",
+          });
+        }
+
+        /**
+         * Approve withdrawal
+         */
+        const result = await collections.withdrawals.updateOne(
+          {
+            _id: new ObjectId(id),
+          },
+          {
+            $set: {
+              status: "approved",
+              approved_at: new Date(),
+            },
+          },
+        );
+
+        if (!result.modifiedCount) {
+          return res.status(400).json({
+            success: false,
+            message: "Failed to approve withdrawal",
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: "Withdrawal approved successfully",
+        });
+      } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
+          success: false,
+          message: "Failed to approve withdrawal",
+        });
+      }
+    },
+  );
 
   export default router
