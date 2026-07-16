@@ -51,4 +51,40 @@ router.get(
   },
 );
 
+router.get("/platform/stats", async (req, res) => {
+  try {
+    const collections = await getCollections();
+
+    const [
+      raisedResult,
+      totalCampaignsFunded,
+      totalSupporters,
+      totalContributions,
+    ] = await Promise.all([
+      collections.campaigns
+        .aggregate([
+          { $match: { status: "approved" } },
+          { $group: { _id: null, totalRaised: { $sum: "$raisedAmount" } } },
+        ])
+        .toArray(),
+      collections.campaigns.countDocuments({ status: "approved" }),
+      collections.user.countDocuments({ role: "supporter" }),
+      collections.contributions.countDocuments({ status: "approved" }),
+    ]);
+
+    const totalRaised = raisedResult[0]?.totalRaised ?? 0;
+
+    res.json({
+      totalRaised,
+      totalCampaignsFunded,
+      totalSupporters,
+      totalContributions,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to load platform stats" });
+  }
+});
+ 
+
 export default router;
