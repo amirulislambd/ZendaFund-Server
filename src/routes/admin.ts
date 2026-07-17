@@ -43,6 +43,108 @@ router.get(
         ])
         .toArray();
 
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+      sixMonthsAgo.setDate(1);
+      sixMonthsAgo.setHours(0, 0, 0, 0);
+
+      const monthlyPerformanceResult = await collections.contributions
+        .aggregate([
+          {
+            $addFields: {
+              contributionDate: {
+                $toDate: "$current_date",
+              },
+            },
+          },
+          {
+            $match: {
+              contributionDate: { $gte: sixMonthsAgo },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                year: { $year: "$contributionDate" },
+                month: { $month: "$contributionDate" },
+              },
+              totalCredits: { $sum: "$Contribution_amount" },
+            },
+          },
+          {
+            $sort: {
+              "_id.year": 1,
+              "_id.month": 1,
+            },
+          },
+        ])
+        .toArray();
+
+      const monthNames = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+
+      const monthlyPerformance = [];
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        const existing = monthlyPerformanceResult.find(
+          (item) => item._id.year === year && item._id.month === month,
+        );
+        monthlyPerformance.push({
+          month: `${monthNames[month - 1]} ${year}`,
+          credits: existing?.totalCredits ?? 0,
+        });
+      }
+
+      const contributions = await collections.contributions
+        .find({})
+        .sort({ current_date: -1 })
+        .limit(10)
+        .toArray();
+
+      const campaigns = await collections.campaigns
+        .find({})
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .toArray();
+
+      const recentActivity = [
+        ...contributions.map((item) => ({
+          type: "contribution",
+          message: `${item.Supporter_name} supported ${item.campaign_title} with ${item.Contribution_amount} credits`,
+          status: item.status,
+          date: item.current_date ? new Date(item.current_date) : new Date(),
+          source: "contribution",
+        })),
+        ...campaigns.map((item) => ({
+          type: "campaign",
+          message: `${item.creatorName} created campaign ${item.title}`,
+          status: item.status,
+          date: item.createdAt ? new Date(item.createdAt) : new Date(),
+          source: "campaign",
+        })),
+      ]
+        .sort((a, b) => b.date.getTime() - a.date.getTime())
+        .slice(0, 10)
+        .map((item) => ({
+          ...item,
+          date: item.date.toISOString(),
+        }));
+
       return res.status(200).json({
         success: true,
         stats: {
@@ -52,6 +154,8 @@ router.get(
           totalPaymentsProcessed:
             paymentsResult[0]?.totalPaymentsProcessed ?? 0,
         },
+        monthlyPerformance,
+        recentActivity,
       });
     } catch (error) {
       console.error(error);
