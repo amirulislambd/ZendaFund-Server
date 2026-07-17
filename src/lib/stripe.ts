@@ -3,47 +3,71 @@ import nodemailer from "nodemailer";
 const emailHost = process.env.EMAIL_HOST;
 const emailPort = process.env.EMAIL_PORT ? Number(process.env.EMAIL_PORT) : 587;
 const emailSecure = process.env.EMAIL_SECURE === "true";
-const emailService = process.env.EMAIL_SERVICE;
+const emailService =
+  process.env.EMAIL_SERVICE ||
+  (process.env.EMAIL_USER?.endsWith("@gmail.com") ? "gmail" : undefined);
 const emailUser = process.env.EMAIL_USER;
 const emailPass = process.env.EMAIL_PASS || process.env.EMAIL_APP_PASSWORD;
-const emailFrom = process.env.EMAIL_FROM || emailUser;
+const emailFrom =
+  process.env.EMAIL_FROM || emailUser || "no-reply@zendafund.com";
 const emailReplyTo = process.env.EMAIL_REPLY_TO || emailFrom;
 const emailReturnPath = process.env.EMAIL_RETURN_PATH || emailFrom;
 
-if (!emailUser || !emailPass) {
-  throw new Error(
-    "EMAIL_USER and EMAIL_PASS / EMAIL_APP_PASSWORD are required for email delivery",
+const hasEmailCredentials = Boolean(emailUser && emailPass);
+const hasTransportConfig = Boolean(emailService || emailHost);
+
+let transporter: any;
+if (hasEmailCredentials && hasTransportConfig) {
+  const transportOptions = {
+    ...(emailService
+      ? { service: emailService }
+      : {
+          host: emailHost,
+          port: emailPort,
+          secure: emailSecure,
+        }),
+    auth: {
+      user: emailUser,
+      pass: emailPass,
+    },
+    pool: true,
+    rateLimit: true,
+  };
+
+  transporter = nodemailer.createTransport(transportOptions);
+
+  transporter.verify().then(
+    () => console.log("Email transporter is ready"),
+    (err: Error) =>
+      console.error("Email transporter failed verification:", err),
   );
+} else {
+  if (!hasEmailCredentials) {
+    console.warn(
+      "Email is not fully configured: missing EMAIL_USER or EMAIL_PASS/EMAIL_APP_PASSWORD. Email sending is disabled.",
+    );
+  }
+  if (!hasTransportConfig) {
+    console.warn(
+      "Email is not fully configured: missing EMAIL_SERVICE or EMAIL_HOST. Email sending is disabled.",
+    );
+  }
+
+  transporter = {
+    sendMail: async (options: any) => {
+      console.warn(
+        "Email disabled; skipping sendMail for:",
+        options?.to || options,
+      );
+      return {
+        accepted: [],
+        rejected: [options?.to],
+        response: "Email disabled",
+      };
+    },
+    verify: async () => true,
+  };
 }
-
-if (!emailService && !emailHost) {
-  throw new Error(
-    "EMAIL_SERVICE or EMAIL_HOST must be configured for email delivery",
-  );
-}
-
-const transportOptions = {
-  ...(emailService
-    ? { service: emailService }
-    : {
-        host: emailHost,
-        port: emailPort,
-        secure: emailSecure,
-      }),
-  auth: {
-    user: emailUser,
-    pass: emailPass,
-  },
-  pool: true,
-  rateLimit: true,
-};
-
-const transporter = nodemailer.createTransport(transportOptions);
-
-transporter.verify().then(
-  () => console.log("Email transporter is ready"),
-  (err) => console.error("Email transporter failed verification:", err),
-);
 
 const defaultMailOptions = {
   from: `"ZendaFund" <${emailFrom}>`,
