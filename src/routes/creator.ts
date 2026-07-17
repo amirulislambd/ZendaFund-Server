@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb";
 import { Router } from "express";
 import { getCollections } from "../lib/mongodb";
 import { AuthRequest, verifyCreator, verifyToken } from "../middleware/auth";
+import { createNotification } from "../lib/notifications";
 
 const router = Router();
 
@@ -46,6 +47,20 @@ router.patch(
         { _id: new ObjectId(contribution.campaign_id) },
         { $inc: { raisedAmount: contribution.Contribution_amount } },
       );
+      // Notify the supporter that their contribution was approved
+      try {
+        const supporter = await collections.user.findOne({
+          email: contribution.Supporter_email,
+        });
+        await createNotification(collections as any, {
+          userId: supporter?._id ?? null,
+          message: `Your contribution of ${contribution.Contribution_amount} credits to ${contribution.campaign_title} was approved by ${contribution.creator_name}.`,
+          toEmail: contribution.Supporter_email,
+          actionRoute: "/dashboard/supporter-home",
+        });
+      } catch (err) {
+        console.error("Failed to create approval notification:", err);
+      }
       return res.status(200).json({
         success: true,
         message: "Contribution approved",
@@ -59,7 +74,6 @@ router.patch(
     }
   },
 );
-
 
 router.patch(
   "/creator/contributions/:id/reject",
@@ -113,18 +127,32 @@ router.patch(
       );
 
       // 2. Refund credits back to supporter
+      const supporter = await collections.user.findOne({
+        email: contribution.Supporter_email,
+      });
+
+      if (!supporter) {
+        return res.status(404).json({
+          message: "Supporter account not found for notification delivery",
+        });
+      }
+
       await collections.user.updateOne(
         { email: contribution.Supporter_email },
         { $inc: { credits: contribution.Contribution_amount } },
       );
 
       // 3. Create notification for supporter
-      await collections.notifications.insertOne({
-        message: `Your contribution of ${contribution.Contribution_amount} credits to ${contribution.campaign_title} was rejected by ${contribution.creator_name}. Reason: ${rejectionMessage.trim()}`,
-        toEmail: contribution.Supporter_email,
-        actionRoute: "/dashboard/supporter-home",
-        time: new Date(),
-      });
+      try {
+        await createNotification(collections as any, {
+          userId: supporter._id,
+          message: `Your contribution of ${contribution.Contribution_amount} credits to ${contribution.campaign_title} was rejected by ${contribution.creator_name}. Reason: ${rejectionMessage.trim()}`,
+          toEmail: contribution.Supporter_email,
+          actionRoute: "/dashboard/supporter-home",
+        });
+      } catch (err) {
+        console.error("Failed to create rejection notification:", err);
+      }
 
       return res.status(200).json({
         success: true,

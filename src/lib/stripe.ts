@@ -327,3 +327,22 @@ export const sendContributionConfirmationEmail = async (data: {
     console.error("Failed to send contribution confirmation email:", error);
   }
 };
+
+export const sendGenericEmail = async (
+  toEmail: string,
+  subject: string,
+  text: string,
+  html?: string,
+) => {
+  try {
+    await transporter.sendMail({
+      from: `"ZendaFund" <${process.env.EMAIL_USER}>`,
+      to: toEmail,
+      subject,
+      text,
+      html,
+    });
+  } catch (error) {
+    console.error("Failed to send generic email:", error);
+  }
+};

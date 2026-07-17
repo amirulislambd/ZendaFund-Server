@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getCollections } from "../lib/mongodb";
 import { sendContributionConfirmationEmail } from "../lib/stripe";
+import { createNotification } from "../lib/notifications";
 import { AuthRequest, verifySupporter, verifyToken } from "../middleware/auth";
 import { usdToCredits } from "../lib/constants";
 
@@ -11,8 +12,8 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
     const {
       campaign_id,
       campaign_title,
-      Contribution_amount, // credits পেমেন্টে ব্যবহার হবে
-      amountUsd, // card পেমেন্টে ব্যবহার হবে
+      Contribution_amount,
+      amountUsd,
       Supporter_email,
       Supporter_name,
       creator_name,
@@ -115,6 +116,21 @@ router.post("/contribution", verifyToken, verifySupporter, async (req, res) => {
     };
 
     sendContributionConfirmationEmail(emailData);
+
+    // Create a notification for the campaign creator (internal alert + optional email copy)
+    try {
+      const creatorUser = await collections.user.findOne({
+        email: creator_email,
+      });
+      await createNotification(collections as any, {
+        userId: creatorUser?._id ?? null,
+        message: `${Supporter_name} supported your campaign "${campaign_title}" with ${amount} credits.`,
+        toEmail: creator_email,
+        actionRoute: `/dashboard/creator-home`,
+      });
+    } catch (err) {
+      console.error("Failed to create creator notification:", err);
+    }
 
     return res.status(201).json({
       success: true,
