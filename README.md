@@ -59,7 +59,18 @@ MONGODB_URI=your_mongodb_connection_string
 JWT_SECRET=your_jwt_secret
 STRIPE_SECRET=your_stripe_secret_key
 IMGBB_KEY=your_imgbb_api_key
+EMAIL_SERVICE=SendGrid
+EMAIL_HOST=smtp.sendgrid.net
+EMAIL_PORT=587
+EMAIL_SECURE=false
+EMAIL_USER=apikey
+EMAIL_PASS=your_sendgrid_api_key
+EMAIL_FROM=no-reply@yourdomain.com
+EMAIL_REPLY_TO=support@yourdomain.com
+EMAIL_RETURN_PATH=bounces@yourdomain.com
 ```
+
+> Important: to avoid spam, send email from a verified custom domain and configure SPF/DKIM/DMARC records for that domain. Do not use a personal Gmail address as the sender for production transactional email.
 
 ---
 

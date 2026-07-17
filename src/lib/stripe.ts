@@ -1,12 +1,61 @@
 import nodemailer from "nodemailer";
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
+const emailHost = process.env.EMAIL_HOST;
+const emailPort = process.env.EMAIL_PORT ? Number(process.env.EMAIL_PORT) : 587;
+const emailSecure = process.env.EMAIL_SECURE === "true";
+const emailService = process.env.EMAIL_SERVICE;
+const emailUser = process.env.EMAIL_USER;
+const emailPass = process.env.EMAIL_PASS || process.env.EMAIL_APP_PASSWORD;
+const emailFrom = process.env.EMAIL_FROM || emailUser;
+const emailReplyTo = process.env.EMAIL_REPLY_TO || emailFrom;
+const emailReturnPath = process.env.EMAIL_RETURN_PATH || emailFrom;
+
+if (!emailUser || !emailPass) {
+  throw new Error(
+    "EMAIL_USER and EMAIL_PASS / EMAIL_APP_PASSWORD are required for email delivery",
+  );
+}
+
+if (!emailService && !emailHost) {
+  throw new Error(
+    "EMAIL_SERVICE or EMAIL_HOST must be configured for email delivery",
+  );
+}
+
+const transportOptions = {
+  ...(emailService
+    ? { service: emailService }
+    : {
+        host: emailHost,
+        port: emailPort,
+        secure: emailSecure,
+      }),
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_APP_PASSWORD,
+    user: emailUser,
+    pass: emailPass,
   },
-});
+  pool: true,
+  rateLimit: true,
+};
+
+const transporter = nodemailer.createTransport(transportOptions);
+
+transporter.verify().then(
+  () => console.log("Email transporter is ready"),
+  (err) => console.error("Email transporter failed verification:", err),
+);
+
+const defaultMailOptions = {
+  from: `"ZendaFund" <${emailFrom}>`,
+  sender: `"ZendaFund" <${emailFrom}>`,
+  replyTo: emailReplyTo,
+  returnPath: emailReturnPath,
+  headers: {
+    "X-Mailer": "ZendaFund Mailer",
+    "List-Unsubscribe": `<mailto:${emailReplyTo}>`,
+  },
+  priority: "high" as const,
+};
 
 // No external image — some email clients block remote images by default,
 // which was showing a broken-image icon. This header is pure HTML/CSS
@@ -56,7 +105,7 @@ export const sendPaymentConfirmationEmail = async (
 ) => {
   try {
     await transporter.sendMail({
-      from: `"ZendaFund" <${process.env.EMAIL_USER}>`,
+      ...defaultMailOptions,
       to: toEmail,
       subject: "Your ZendaFund credit purchase is confirmed",
       text: `Payment Successful\n\nThank you for your purchase!\n\nCredits Purchased: ${credits.toLocaleString()}\nAmount Paid: $${amountUsd.toFixed(2)}\n\nYour credits have been added to your account and are ready to use to support campaigns.\n\nIf you have any questions, reply to this email.`,
@@ -114,11 +163,9 @@ export const sendContributionConfirmationEmail = async (data: {
       data.paymentMethod === "credits" ? "Wallet Credits" : "Card (Stripe)";
 
     await transporter.sendMail({
-      from: `"ZendaFund" <${process.env.EMAIL_USER}>`,
+      ...defaultMailOptions,
       to: data.toEmail,
-
       subject: `You supported "${data.campaignTitle}" — Thank You!`,
-
       text: `
   Contribution Confirmed
   
@@ -152,176 +199,58 @@ export const sendContributionConfirmationEmail = async (data: {
   View Campaign:
   ${process.env.NEXT_PUBLIC_BASE_URL}/explore/${data.campaignId}
   `,
-
       html: `
         <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto">
-  
-        ${emailHeader}
-  
-        <h2 style="color:#10b981">
-        Contribution Confirmed 🎉
-        </h2>
-  
-        <p>
-        Hi <strong>${data.supporterName}</strong>,
-        </p>
-  
-        <p>
-        Thank you for supporting
-        <strong>${data.campaignTitle}</strong>
-  
-        ${data.creatorName ? `by <strong>${data.creatorName}</strong>` : ""}.
-        </p>
-  
-        <table
-        style="
-        width:100%;
-        border-collapse:collapse;
-        margin-top:20px;
-        ">
-  
-        <tr>
-        <td style="padding:10px;color:#64748b">
-        Campaign
-        </td>
-  
-        <td
-        style="
-        padding:10px;
-        text-align:right;
-        font-weight:bold;
-        ">
-        ${data.campaignTitle}
-        </td>
-        </tr>
-  
-        <tr>
-        <td style="padding:10px;color:#64748b">
-        Contribution
-        </td>
-  
-        <td
-        style="
-        padding:10px;
-        text-align:right;
-        font-weight:bold;
-        ">
-        ${data.amount}
-        </td>
-        </tr>
-  
-        <tr>
-        <td style="padding:10px;color:#64748b">
-        Payment Method
-        </td>
-  
-        <td
-        style="
-        padding:10px;
-        text-align:right;
-        font-weight:bold;
-        ">
-        ${paymentMethodText}
-        </td>
-        </tr>
-  
-        ${
-          data.paymentMethod === "credits"
-            ? `
-        <tr>
-        <td style="padding:10px;color:#64748b">
-        Remaining Credits
-        </td>
-  
-        <td
-        style="
-        padding:10px;
-        text-align:right;
-        font-weight:bold;
-        ">
-        ${data.remainingCredits}
-        </td>
-        </tr>
-        `
-            : `
-        <tr>
-        <td style="padding:10px;color:#64748b">
-        Transaction ID
-        </td>
-  
-        <td
-        style="
-        padding:10px;
-        text-align:right;
-        font-size:12px;
-        ">
-        ${data.stripeSessionId ?? "N/A"}
-        </td>
-        </tr>
-        `
-        }
-  
-        <tr>
-        <td style="padding:10px;color:#64748b">
-        Status
-        </td>
-  
-        <td
-        style="
-        padding:10px;
-        text-align:right;
-        color:#f59e0b;
-        font-weight:bold;
-        ">
-        Pending Approval
-        </td>
-        </tr>
-  
-        <tr>
-        <td style="padding:10px;color:#64748b">
-        Date
-        </td>
-  
-        <td
-        style="
-        padding:10px;
-        text-align:right;
-        ">
-        ${formattedDate}
-        </td>
-        </tr>
-  
-        </table>
-  
-        <div style="text-align:center;margin-top:30px">
-  
-        <a
-        href="${process.env.NEXT_PUBLIC_BASE_URL}/explore/${data.campaignId}"
-        style="
-        display:inline-block;
-        background:#10b981;
-        color:white;
-        padding:12px 28px;
-        border-radius:999px;
-        text-decoration:none;
-        font-weight:bold;
-        ">
-        View Campaign
-        </a>
-  
+          ${emailHeader}
+          <h2 style="color:#10b981;">Contribution Confirmed 🎉</h2>
+          <p>Hi <strong>${data.supporterName}</strong>,</p>
+          <p>
+            Thank you for supporting <strong>${data.campaignTitle}</strong>
+            ${data.creatorName ? `by <strong>${data.creatorName}</strong>` : ""}.
+          </p>
+          <table style="width:100%;border-collapse:collapse;margin-top:20px;">
+            <tr>
+              <td style="padding:10px;color:#64748b">Campaign</td>
+              <td style="padding:10px;text-align:right;font-weight:bold;">${data.campaignTitle}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px;color:#64748b">Contribution</td>
+              <td style="padding:10px;text-align:right;font-weight:bold;">${data.amount}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px;color:#64748b">Payment Method</td>
+              <td style="padding:10px;text-align:right;font-weight:bold;">${paymentMethodText}</td>
+            </tr>
+            ${
+              data.paymentMethod === "credits"
+                ? `
+            <tr>
+              <td style="padding:10px;color:#64748b">Remaining Credits</td>
+              <td style="padding:10px;text-align:right;font-weight:bold;">${data.remainingCredits}</td>
+            </tr>
+            `
+                : `
+            <tr>
+              <td style="padding:10px;color:#64748b">Transaction ID</td>
+              <td style="padding:10px;text-align:right;font-size:12px;">${data.stripeSessionId ?? "N/A"}</td>
+            </tr>
+            `
+            }
+            <tr>
+              <td style="padding:10px;color:#64748b">Status</td>
+              <td style="padding:10px;text-align:right;color:#f59e0b;font-weight:bold;">Pending Approval</td>
+            </tr>
+            <tr>
+              <td style="padding:10px;color:#64748b">Date</td>
+              <td style="padding:10px;text-align:right;">${formattedDate}</td>
+            </tr>
+          </table>
+          <div style="text-align:center;margin-top:30px">
+            <a href="${process.env.NEXT_PUBLIC_BASE_URL}/explore/${data.campaignId}" style="display:inline-block;background:#10b981;color:white;padding:12px 28px;border-radius:999px;text-decoration:none;font-weight:bold;">View Campaign</a>
+          </div>
+          <p style="margin-top:30px;color:#64748b;font-size:14px;">You can track this contribution anytime from your dashboard.</p>
         </div>
-  
-        <p
-        style="
-        margin-top:30px;
-        color:#64748b;
-        font-size:14px;
-        ">
-        You can track this contribution anytime from your dashboard.
-        </p>
-  
-        </div>
-        `,
+      `,
     });
   } catch (error) {
     console.error("Failed to send contribution confirmation email:", error);
@@ -336,7 +265,7 @@ export const sendGenericEmail = async (
 ) => {
   try {
     await transporter.sendMail({
-      from: `"ZendaFund" <${process.env.EMAIL_USER}>`,
+      ...defaultMailOptions,
       to: toEmail,
       subject,
       text,
