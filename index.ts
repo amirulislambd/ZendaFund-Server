@@ -19,6 +19,7 @@ import statsRoutes from "./src/routes/stats";
 import creator from "./src/routes/creator";
 import admin from "./src/routes/admin";
 import testimonials from "./src/routes/testimonials";
+import notifications from "./src/routes/notifications";
 
 app.use("/api", campaignRoutes);
 app.use("/api", authRoutes);
@@ -28,6 +29,7 @@ app.use("/api", statsRoutes);
 app.use("/api", creator);
 app.use("/api", admin);
 app.use("/api", testimonials);
+app.use("/api", notifications);
 
 app.get("/", (req, res) => {
   res.send("ZendaFund API is running, MongoDB connected ✅");
